@@ -2,12 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0b14">
 <title>Lienzo Musical</title>
 <style>
   :root { --bg: #0b0b14; --fg: #e8e8f0; --muted: #8a8aa0; }
   * { box-sizing: border-box; margin: 0; }
   html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; overflow: hidden; }
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
   #hud { position: fixed; top: 16px; left: 16px; right: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; pointer-events: none; }
   #hud > * { pointer-events: auto; }
@@ -19,19 +24,38 @@
   @keyframes pulso { 50% { opacity: .7; } }
   #hint { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); pointer-events: none; transition: opacity .6s; }
   #hint b { display: block; color: var(--fg); font-size: 22px; margin-bottom: 6px; }
+  #adulto { display: flex; gap: 8px; flex-wrap: wrap; }
+  body.bloqueado #adulto { display: none; }
+  #candado { font-size: 18px; padding: 6px 10px; }
+  #candado.cargando { animation: llenar 3s linear forwards; }
+  @keyframes llenar { from { box-shadow: inset 0 0 0 0 #ffffff66; } to { box-shadow: inset 0 0 0 24px #ffffff66; } }
+  /* Botones grandes para los niños */
+  #nino { position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 0 16px; pointer-events: none; }
+  #nino button { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 80px; min-height: 80px; padding: 10px 14px; border-radius: 24px; font-size: 14px; }
+  #nino button span { font-size: 32px; line-height: 1; }
+  #aviso { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #000c; padding: 8px 14px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; text-align: center; }
+  #aviso.ver { opacity: 1; }
 </style>
 </head>
-<body>
+<body class="bloqueado">
 <canvas id="c"></canvas>
 <div id="hud">
   <h1>🎨 Lienzo Musical</h1>
-  <button id="escala">Escala: Pentatónica</button>
-  <button id="eco" class="on">Eco: sí</button>
-  <button id="explosion">✨ Explosión</button>
-  <button id="limpiar">Limpiar</button>
-  <button id="grabar">● Grabar</button>
+  <div id="adulto">
+    <button id="escala">Escala: Pentatónica</button>
+    <button id="eco" class="on">Eco: sí</button>
+    <button id="grabar">● Grabar</button>
+  </div>
+  <button id="candado" title="Mantén presionado 3 segundos para desbloquear">🔒</button>
 </div>
-<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>Barra espaciadora o ✨: explosión de notas</div></div>
+<div id="nino">
+  <button id="calma"><span>🌙</span>Calma</button>
+  <button id="explosion"><span>✨</span>Explosión</button>
+  <button id="limpiar"><span>🧽</span>Limpiar</button>
+  <button id="pantalla"><span>⛶</span>Pantalla</button>
+</div>
+<div id="aviso"></div>
+<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>✨ explosión de notas · 🌙 modo calma</div></div>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -47,7 +71,11 @@ const ESCALAS = {
   'Blues':       [0, 3, 5, 6, 7, 10],
 };
 const nombres = Object.keys(ESCALAS);
-let escalaIdx = 0, conEco = true;
+let escalaIdx = 0, conEco = true, calma = false;
+
+// Preferencias guardadas en este dispositivo (si el navegador lo permite)
+function leer(k, def) { try { const v = localStorage.getItem('lienzo.' + k); return v === null ? def : v === '1'; } catch { return def; } }
+function guardar(k, v) { try { localStorage.setItem('lienzo.' + k, v ? '1' : '0'); } catch {} }
 let ac, master, delay, feedback, recDest;
 
 function initAudio() {
@@ -128,29 +156,33 @@ function tocar(x, y, fuerza) {
   if (!ac) return;
   const { midi, i } = notaDesdeY(y);
   const now = ac.currentTime;
-  if (i === ultimaNota && now - ultimoT < 0.12) return;
+  if (i === ultimaNota && now - ultimoT < (calma ? 0.3 : 0.12)) return;
+  if (calma && now - ultimoT < 0.15) return;       // en calma, notas más espaciadas
   ultimaNota = i; ultimoT = now;
   const f = 440 * Math.pow(2, (midi - 69) / 12);
   const o = ac.createOscillator(), g = ac.createGain(), pan = ac.createStereoPanner();
-  o.type = x / W < 0.5 ? 'sine' : 'triangle';
+  o.type = calma || x / W < 0.5 ? 'sine' : 'triangle';
   o.frequency.value = f;
   pan.pan.value = (x / W) * 2 - 1;
-  const vol = Math.min(0.35, 0.08 + fuerza * 0.012);
+  const vol = calma ? Math.min(0.18, 0.05 + fuerza * 0.006) : Math.min(0.35, 0.08 + fuerza * 0.012);
+  const ataque = calma ? 0.08 : 0.01, cola = calma ? 2.5 : 1.2;
   g.gain.setValueAtTime(0, now);
-  g.gain.linearRampToValueAtTime(vol, now + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+  g.gain.linearRampToValueAtTime(vol, now + ataque);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + cola);
   o.connect(g); g.connect(pan); pan.connect(master);
   if (conEco) pan.connect(delay);
-  o.start(now); o.stop(now + 1.3);
+  o.start(now); o.stop(now + cola + 0.1);
   return midi;
 }
 
 // ---------- Partículas ----------
 const parts = [];
-function color(midi) { return `hsl(${(midi * 29) % 360} 90% 65%)`; }
+function color(midi) { return calma ? `hsl(${(midi * 29) % 360} 50% 72%)` : `hsl(${(midi * 29) % 360} 90% 65%)`; }
 function emitir(x, y, vx, vy, n, midi) {
+  const s = calma ? 0.5 : 1;
+  if (calma) n = Math.ceil(n / 2);
   for (let k = 0; k < n; k++) {
-    parts.push({ x, y, vx: vx * 0.2 + (Math.random() - .5) * 3, vy: vy * 0.2 + (Math.random() - .5) * 3,
+    parts.push({ x, y, vx: (vx * 0.2 + (Math.random() - .5) * 3) * s, vy: (vy * 0.2 + (Math.random() - .5) * 3) * s,
                  r: 2 + Math.random() * 4, vida: 1, c: color(midi ?? notaDesdeY(y).midi) });
   }
 }
@@ -182,10 +214,12 @@ addEventListener('pointercancel', soltar);
 
 function explosion() {
   initAudio(); ac.resume(); hint.style.opacity = 0;
-  for (let k = 0; k < 6; k++) setTimeout(() => {
+  const n = calma ? 3 : 6, paso = calma ? 350 : 110;
+  for (let k = 0; k < n; k++) setTimeout(() => {
     const x = Math.random() * W, y = Math.random() * H;
-    ultimaNota = -1; const m = tocar(x, y, 15); anillo(x, y, m); emitir(x, y, 0, 0, 25, m);
-  }, k * 110);
+    ultimaNota = -1; ultimoT = 0;
+    const m = tocar(x, y, 15); anillo(x, y, m); emitir(x, y, 0, 0, 25, m);
+  }, k * paso);
 }
 addEventListener('keydown', e => {
   if (e.code !== 'Space') return;
@@ -200,20 +234,66 @@ bEsc.onclick = () => { escalaIdx = (escalaIdx + 1) % nombres.length; bEsc.textCo
 bEco.onclick = () => { conEco = !conEco; bEco.textContent = 'Eco: ' + (conEco ? 'sí' : 'no'); bEco.classList.toggle('on', conEco); };
 document.getElementById('limpiar').onclick = () => { parts.length = 0; ctx.fillStyle = '#0b0b14'; ctx.fillRect(0, 0, W, H); };
 
+// ---------- Modo calma ----------
+const bCalma = document.getElementById('calma');
+function ponerCalma(v) { calma = v; bCalma.classList.toggle('on', v); guardar('calma', v); }
+bCalma.onclick = () => { ponerCalma(!calma); avisar(calma ? '🌙 Modo calma' : '🎨 Modo normal'); };
+ponerCalma(leer('calma', false));
+
+// ---------- Avisos ----------
+const aviso = document.getElementById('aviso');
+let tAviso = null;
+function avisar(txt) {
+  aviso.textContent = txt; aviso.classList.add('ver');
+  clearTimeout(tAviso); tAviso = setTimeout(() => aviso.classList.remove('ver'), 2000);
+}
+
+// ---------- Bloqueo (mantener 🔒 presionado 3 s para desbloquear) ----------
+const bCand = document.getElementById('candado');
+let bloqueado = true, tCand = null;
+function ponerBloqueo(v) {
+  bloqueado = v; document.body.classList.toggle('bloqueado', v);
+  bCand.textContent = v ? '🔒' : '🔓'; guardar('bloqueado', v);
+}
+bCand.addEventListener('pointerdown', () => {
+  if (!bloqueado) { ponerBloqueo(true); avisar('🔒 Bloqueado'); return; }
+  bCand.classList.add('cargando');
+  tCand = setTimeout(() => { tCand = null; bCand.classList.remove('cargando'); ponerBloqueo(false); avisar('🔓 Opciones para adultos'); }, 3000);
+});
+const soltarCandado = () => {
+  if (!tCand) return;
+  clearTimeout(tCand); tCand = null; bCand.classList.remove('cargando');
+  avisar('Mantén 🔒 presionado 3 segundos');
+};
+['pointerup', 'pointerleave', 'pointercancel'].forEach(t => bCand.addEventListener(t, soltarCandado));
+ponerBloqueo(leer('bloqueado', true));
+addEventListener('contextmenu', e => e.preventDefault());   // sin menú al dejar el dedo presionado
+
+// ---------- Pantalla completa ----------
+const bPant = document.getElementById('pantalla');
+if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) bPant.style.display = 'none';
+bPant.onclick = () => {
+  const el = document.documentElement;
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+};
+
 // ---------- Bucle ----------
 function frame() {
-  ctx.fillStyle = 'rgba(11,11,20,0.12)';
+  // Un desvanecido más lento deja manchas grises que nunca se borran; 0.1 es el mínimo limpio
+  ctx.fillStyle = calma ? 'rgba(11,11,20,0.1)' : 'rgba(11,11,20,0.12)';
   ctx.fillRect(0, 0, W, H);
   ctx.globalCompositeOperation = 'lighter';
+  const brillo = calma ? 0.7 : 1, lento = calma ? 0.5 : 1;
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i];
     if (p.anillo) {
-      p.r += 3; p.vida -= 0.025;
-      ctx.strokeStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida) * 0.6; ctx.lineWidth = 2;
+      p.r += 3 * lento; p.vida -= 0.025 * lento;
+      ctx.strokeStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida) * 0.6 * brillo; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.stroke();
     } else {
-      p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy = p.vy * 0.96 + 0.03; p.vida -= 0.012;
-      ctx.fillStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida);
+      p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy = p.vy * 0.96 + 0.03 * lento; p.vida -= 0.012 * lento;
+      ctx.fillStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida) * brillo;
       ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.vida + 0.5, 0, Math.PI * 2); ctx.fill();
     }
     if (p.vida <= 0) parts.splice(i, 1);
