@@ -27,10 +27,11 @@
   <h1>🎨 Lienzo Musical</h1>
   <button id="escala">Escala: Pentatónica</button>
   <button id="eco" class="on">Eco: sí</button>
+  <button id="explosion">✨ Explosión</button>
   <button id="limpiar">Limpiar</button>
   <button id="grabar">● Grabar</button>
 </div>
-<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>Barra espaciadora: explosión de notas</div></div>
+<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>Barra espaciadora o ✨: explosión de notas</div></div>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -156,32 +157,43 @@ function emitir(x, y, vx, vy, n, midi) {
 function anillo(x, y, midi) { parts.push({ x, y, vx: 0, vy: 0, r: 4, vida: 1, c: color(midi), anillo: true }); }
 
 // ---------- Entrada ----------
-let abajo = false, px = 0, py = 0;
+// Un trazo por dedo/puntero, para que el multitáctil no salte entre posiciones
+const trazos = new Map();
 const hint = document.getElementById('hint');
 cv.addEventListener('pointerdown', e => {
   initAudio(); ac.resume(); hint.style.opacity = 0;
-  abajo = true; px = e.clientX; py = e.clientY;
-  const m = tocar(px, py, 10); anillo(px, py, m); emitir(px, py, 0, 0, 12, m);
+  const x = e.clientX, y = e.clientY;
+  trazos.set(e.pointerId, { x, y });
+  const m = tocar(x, y, 10); anillo(x, y, m); emitir(x, y, 0, 0, 12, m);
 });
 cv.addEventListener('pointermove', e => {
-  if (!abajo) return;
-  const x = e.clientX, y = e.clientY, vx = x - px, vy = y - py;
+  const t = trazos.get(e.pointerId);
+  if (!t) return;
+  const x = e.clientX, y = e.clientY, vx = x - t.x, vy = y - t.y;
   const vel = Math.hypot(vx, vy);
   const m = tocar(x, y, vel);
   if (m) anillo(x, y, m);
   emitir(x, y, vx, vy, Math.min(6, 1 + vel / 8), m);
-  px = x; py = y;
+  t.x = x; t.y = y;
 });
-addEventListener('pointerup', () => abajo = false);
+const soltar = e => trazos.delete(e.pointerId);
+addEventListener('pointerup', soltar);
+addEventListener('pointercancel', soltar);
 
-addEventListener('keydown', e => {
-  if (e.code !== 'Space') return;
-  e.preventDefault(); initAudio(); ac.resume(); hint.style.opacity = 0;
+function explosion() {
+  initAudio(); ac.resume(); hint.style.opacity = 0;
   for (let k = 0; k < 6; k++) setTimeout(() => {
     const x = Math.random() * W, y = Math.random() * H;
     ultimaNota = -1; const m = tocar(x, y, 15); anillo(x, y, m); emitir(x, y, 0, 0, 25, m);
   }, k * 110);
+}
+addEventListener('keydown', e => {
+  if (e.code !== 'Space') return;
+  // Quita el foco del botón para que el espacio no lo active también (p. ej. Limpiar)
+  if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+  e.preventDefault(); explosion();
 });
+document.getElementById('explosion').onclick = explosion;
 
 const bEsc = document.getElementById('escala'), bEco = document.getElementById('eco');
 bEsc.onclick = () => { escalaIdx = (escalaIdx + 1) % nombres.length; bEsc.textContent = 'Escala: ' + nombres[escalaIdx]; };

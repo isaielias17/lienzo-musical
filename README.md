@@ -10,7 +10,8 @@ Abre `index.html` en un navegador moderno. No necesita instalación ni servidor.
   - Arriba = agudo · Abajo = grave (3 octavas).
   - Izquierda = onda senoidal · Derecha = onda triangular; el sonido también se panea de izquierda a derecha.
   - Más rápido = más fuerte.
-- **Barra espaciadora**: explosión de notas en posiciones aleatorias.
+- **Barra espaciadora** o botón **✨ Explosión**: explosión de notas en posiciones aleatorias.
+- Funciona con varios dedos a la vez en pantallas táctiles.
 
 ## Controles
 
@@ -18,6 +19,7 @@ Abre `index.html` en un navegador moderno. No necesita instalación ni servidor.
 | --- | --- |
 | Escala | Cambia entre Pentatónica, Menor, Japonesa y Blues. |
 | Eco | Activa o desactiva el eco (delay). |
+| ✨ Explosión | Lanza una ráfaga de notas (igual que la barra espaciadora). |
 | Limpiar | Borra el lienzo. |
 | ● Grabar | Graba lo que suena y descarga el audio (`.webm`, `.ogg` o `.m4a`, según el navegador) al detener. |
 
