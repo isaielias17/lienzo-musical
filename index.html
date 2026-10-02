@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lienzo Musical</title>
+<style>
+  :root { --bg: #0b0b14; --fg: #e8e8f0; --muted: #8a8aa0; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; touch-action: none; }
+  #hud { position: fixed; top: 16px; left: 16px; right: 16px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; pointer-events: none; }
+  #hud > * { pointer-events: auto; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .04em; margin-right: auto; }
+  button { background: #ffffff14; color: var(--fg); border: 1px solid #ffffff22; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover { background: #ffffff26; }
+  button.on { background: #ffffff33; border-color: #ffffff55; }
+  button.rec { background: #e5484d; border-color: #ff6b70; color: #fff; animation: pulso 1.2s infinite; }
+  @keyframes pulso { 50% { opacity: .7; } }
+  #hint { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); pointer-events: none; transition: opacity .6s; }
+  #hint b { display: block; color: var(--fg); font-size: 22px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <h1>🎨 Lienzo Musical</h1>
+  <button id="escala">Escala: Pentatónica</button>
+  <button id="eco" class="on">Eco: sí</button>
+  <button id="limpiar">Limpiar</button>
+  <button id="grabar">● Grabar</button>
+</div>
+<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>Barra espaciadora: explosión de notas</div></div>
+
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W, H, dpr = Math.min(devicePixelRatio || 1, 2);
+function resize() { W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+addEventListener('resize', resize); resize();
+
+// ---------- Audio ----------
+const ESCALAS = {
+  'Pentatónica': [0, 2, 4, 7, 9],
+  'Menor':       [0, 2, 3, 5, 7, 8, 10],
+  'Japonesa':    [0, 1, 5, 7, 8],
+  'Blues':       [0, 3, 5, 6, 7, 10],
+};
+const nombres = Object.keys(ESCALAS);
+let escalaIdx = 0, conEco = true;
+let ac, master, delay, feedback, recDest;
+
+function initAudio() {
+  if (ac) return;
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.5;
+  delay = ac.createDelay(1); delay.delayTime.value = 0.28;
+  feedback = ac.createGain(); feedback.gain.value = 0.35;
+  delay.connect(feedback); feedback.connect(delay);
+  delay.connect(master); master.connect(ac.destination);
+  recDest = ac.createMediaStreamDestination();
+  master.connect(recDest);
+}
+
+// ---------- Grabación ----------
+const bRec = document.getElementById('grabar');
+let grabadora = null, trozos = [], inicioRec = 0, relojRec = null;
+
+function tipoAudio() {
+  const tipos = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+  return tipos.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
+}
+
+function empezarGrabacion() {
+  initAudio(); ac.resume();
+  const tipo = tipoAudio();
+  grabadora = new MediaRecorder(recDest.stream, tipo ? { mimeType: tipo } : undefined);
+  trozos = [];
+  grabadora.ondataavailable = e => { if (e.data.size) trozos.push(e.data); };
+  grabadora.onstop = descargar;
+  grabadora.start(250);
+  inicioRec = Date.now();
+  bRec.classList.add('rec');
+  const tick = () => {
+    const s = Math.floor((Date.now() - inicioRec) / 1000);
+    bRec.textContent = `■ Detener ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
+  tick(); relojRec = setInterval(tick, 500);
+}
+
+function detenerGrabacion() {
+  clearInterval(relojRec);
+  bRec.classList.remove('rec');
+  bRec.textContent = '● Grabar';
+  // Deja sonar el eco un momento antes de cortar
+  setTimeout(() => grabadora.state !== 'inactive' && grabadora.stop(), 600);
+}
+
+function descargar() {
+  if (!trozos.length) return;
+  const tipo = grabadora.mimeType || 'audio/webm';
+  const ext = tipo.includes('ogg') ? 'ogg' : tipo.includes('mp4') ? 'm4a' : 'webm';
+  const blob = new Blob(trozos, { type: tipo });
+  const a = document.createElement('a');
+  const f = new Date();
+  a.href = URL.createObjectURL(blob);
+  a.download = `lienzo-musical-${f.getFullYear()}${String(f.getMonth() + 1).padStart(2, '0')}${String(f.getDate()).padStart(2, '0')}-${String(f.getHours()).padStart(2, '0')}${String(f.getMinutes()).padStart(2, '0')}${String(f.getSeconds()).padStart(2, '0')}.${ext}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+bRec.onclick = () => {
+  if (!window.MediaRecorder) { alert('Tu navegador no permite grabar audio.'); return; }
+  if (grabadora && grabadora.state === 'recording') detenerGrabacion();
+  else empezarGrabacion();
+};
+
+function notaDesdeY(y) {
+  const esc = ESCALAS[nombres[escalaIdx]];
+  const pasos = esc.length * 3;                 // 3 octavas
+  const i = Math.floor((1 - y / H) * pasos);
+  const oct = Math.floor(i / esc.length), grado = esc[((i % esc.length) + esc.length) % esc.length];
+  return { midi: 48 + oct * 12 + grado, i };
+}
+
+let ultimaNota = -1, ultimoT = 0;
+function tocar(x, y, fuerza) {
+  if (!ac) return;
+  const { midi, i } = notaDesdeY(y);
+  const now = ac.currentTime;
+  if (i === ultimaNota && now - ultimoT < 0.12) return;
+  ultimaNota = i; ultimoT = now;
+  const f = 440 * Math.pow(2, (midi - 69) / 12);
+  const o = ac.createOscillator(), g = ac.createGain(), pan = ac.createStereoPanner();
+  o.type = x / W < 0.5 ? 'sine' : 'triangle';
+  o.frequency.value = f;
+  pan.pan.value = (x / W) * 2 - 1;
+  const vol = Math.min(0.35, 0.08 + fuerza * 0.012);
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(vol, now + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+  o.connect(g); g.connect(pan); pan.connect(master);
+  if (conEco) pan.connect(delay);
+  o.start(now); o.stop(now + 1.3);
+  return midi;
+}
+
+// ---------- Partículas ----------
+const parts = [];
+function color(midi) { return `hsl(${(midi * 29) % 360} 90% 65%)`; }
+function emitir(x, y, vx, vy, n, midi) {
+  for (let k = 0; k < n; k++) {
+    parts.push({ x, y, vx: vx * 0.2 + (Math.random() - .5) * 3, vy: vy * 0.2 + (Math.random() - .5) * 3,
+                 r: 2 + Math.random() * 4, vida: 1, c: color(midi ?? notaDesdeY(y).midi) });
+  }
+}
+function anillo(x, y, midi) { parts.push({ x, y, vx: 0, vy: 0, r: 4, vida: 1, c: color(midi), anillo: true }); }
+
+// ---------- Entrada ----------
+let abajo = false, px = 0, py = 0;
+const hint = document.getElementById('hint');
+cv.addEventListener('pointerdown', e => {
+  initAudio(); ac.resume(); hint.style.opacity = 0;
+  abajo = true; px = e.clientX; py = e.clientY;
+  const m = tocar(px, py, 10); anillo(px, py, m); emitir(px, py, 0, 0, 12, m);
+});
+cv.addEventListener('pointermove', e => {
+  if (!abajo) return;
+  const x = e.clientX, y = e.clientY, vx = x - px, vy = y - py;
+  const vel = Math.hypot(vx, vy);
+  const m = tocar(x, y, vel);
+  if (m) anillo(x, y, m);
+  emitir(x, y, vx, vy, Math.min(6, 1 + vel / 8), m);
+  px = x; py = y;
+});
+addEventListener('pointerup', () => abajo = false);
+
+addEventListener('keydown', e => {
+  if (e.code !== 'Space') return;
+  e.preventDefault(); initAudio(); ac.resume(); hint.style.opacity = 0;
+  for (let k = 0; k < 6; k++) setTimeout(() => {
+    const x = Math.random() * W, y = Math.random() * H;
+    ultimaNota = -1; const m = tocar(x, y, 15); anillo(x, y, m); emitir(x, y, 0, 0, 25, m);
+  }, k * 110);
+});
+
+const bEsc = document.getElementById('escala'), bEco = document.getElementById('eco');
+bEsc.onclick = () => { escalaIdx = (escalaIdx + 1) % nombres.length; bEsc.textContent = 'Escala: ' + nombres[escalaIdx]; };
+bEco.onclick = () => { conEco = !conEco; bEco.textContent = 'Eco: ' + (conEco ? 'sí' : 'no'); bEco.classList.toggle('on', conEco); };
+document.getElementById('limpiar').onclick = () => { parts.length = 0; ctx.fillStyle = '#0b0b14'; ctx.fillRect(0, 0, W, H); };
+
+// ---------- Bucle ----------
+function frame() {
+  ctx.fillStyle = 'rgba(11,11,20,0.12)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    if (p.anillo) {
+      p.r += 3; p.vida -= 0.025;
+      ctx.strokeStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida) * 0.6; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      p.x += p.vx; p.y += p.vy; p.vx *= 0.96; p.vy = p.vy * 0.96 + 0.03; p.vida -= 0.012;
+      ctx.fillStyle = p.c; ctx.globalAlpha = Math.max(0, p.vida);
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.vida + 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (p.vida <= 0) parts.splice(i, 1);
+  }
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>
