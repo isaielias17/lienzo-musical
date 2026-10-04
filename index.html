@@ -22,7 +22,7 @@
   button.on { background: #ffffff33; border-color: #ffffff55; }
   button.rec { background: #e5484d; border-color: #ff6b70; color: #fff; animation: pulso 1.2s infinite; }
   @keyframes pulso { 50% { opacity: .7; } }
-  #hint { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); pointer-events: none; transition: opacity .6s; }
+  #hint { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; color: var(--muted); pointer-events: none; transition: opacity .6s; padding: 0 16px; }
   #hint b { display: block; color: var(--fg); font-size: 22px; margin-bottom: 6px; }
   #adulto { display: flex; gap: 8px; flex-wrap: wrap; }
   body.bloqueado #adulto { display: none; }
@@ -30,32 +30,50 @@
   #candado.cargando { animation: llenar 3s linear forwards; }
   @keyframes llenar { from { box-shadow: inset 0 0 0 0 #ffffff66; } to { box-shadow: inset 0 0 0 24px #ffffff66; } }
   /* Botones grandes para los niños */
-  #nino { position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 0 16px; pointer-events: none; }
-  #nino button { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 80px; min-height: 80px; padding: 10px 14px; border-radius: 24px; font-size: 14px; }
+  #nino { position: fixed; left: 0; right: 0; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 0 16px; pointer-events: none; }
+  #nino button { pointer-events: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 72px; min-height: 76px; padding: 10px 12px; border-radius: 24px; font-size: 14px; }
   #nino button span { font-size: 32px; line-height: 1; }
-  #aviso { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #000c; padding: 8px 14px; border-radius: 12px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; text-align: center; }
+  #aviso { position: fixed; top: 42%; left: 50%; transform: translateX(-50%); background: #000c; padding: 10px 16px; border-radius: 12px; font-size: 16px; opacity: 0; transition: opacity .3s; pointer-events: none; text-align: center; }
   #aviso.ver { opacity: 1; }
+  /* Retos de música: franjas de notas y panel */
+  #bandas { position: fixed; inset: 0; display: none; flex-direction: column-reverse; pointer-events: none; }
+  body.en-reto #bandas { display: flex; }
+  #bandas div { flex: 1; border-top: 1px solid; display: flex; align-items: center; padding-left: 16px; font-size: 15px; font-weight: 600; color: #ffffffaa; transition: filter .15s; }
+  #bandas div.brilla { filter: brightness(2.4); }
+  #bandas div.siguiente { animation: latir 1s infinite; }
+  @keyframes latir { 50% { filter: brightness(2.2); } }
+  #reto { position: fixed; top: 64px; left: 16px; right: 16px; display: none; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+  body.en-reto #reto { display: flex; }
+  body.en-reto #nino { display: none; }
+  #retoInfo { font-weight: 600; font-size: 16px; background: #000a; padding: 6px 12px; border-radius: 12px; text-align: center; }
+  #retoBotones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; pointer-events: auto; }
 </style>
 </head>
 <body class="bloqueado">
 <canvas id="c"></canvas>
+<div id="bandas"></div>
 <div id="hud">
   <h1>🎨 Lienzo Musical</h1>
   <div id="adulto">
-    <button id="escala">Escala: Pentatónica</button>
+    <button id="escala">Escala: Pentatónica (China)</button>
     <button id="eco" class="on">Eco: sí</button>
     <button id="grabar">● Grabar</button>
+    <button id="retos">🎯 Retos</button>
+    <button id="ciencia">🔬 Ciencia</button>
+    <button id="foto">📷 Guardar dibujo</button>
   </div>
   <button id="candado" title="Mantén presionado 3 segundos para desbloquear">🔒</button>
 </div>
+<div id="reto"><div id="retoInfo"></div><div id="retoBotones"></div></div>
 <div id="nino">
   <button id="calma"><span>🌙</span>Calma</button>
   <button id="explosion"><span>✨</span>Explosión</button>
+  <button id="instrumento"><span>🎵</span>Sonido</button>
   <button id="limpiar"><span>🧽</span>Limpiar</button>
   <button id="pantalla"><span>⛶</span>Pantalla</button>
 </div>
 <div id="aviso"></div>
-<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>✨ explosión de notas · 🌙 modo calma</div></div>
+<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>✨ explosión · 🎵 instrumentos · 🌙 calma</div></div>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -63,20 +81,37 @@ let W, H, dpr = Math.min(devicePixelRatio || 1, 2);
 function resize() { W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
 addEventListener('resize', resize); resize();
 
+// Preferencias guardadas en este dispositivo (si el navegador lo permite)
+function leerTxt(k) { try { return localStorage.getItem('lienzo.' + k); } catch { return null; } }
+function guardarTxt(k, v) { try { localStorage.setItem('lienzo.' + k, String(v)); } catch {} }
+function leer(k, def) { const v = leerTxt(k); return v === null ? def : v === '1'; }
+function guardar(k, v) { guardarTxt(k, v ? '1' : '0'); }
+
 // ---------- Audio ----------
 const ESCALAS = {
-  'Pentatónica': [0, 2, 4, 7, 9],
-  'Menor':       [0, 2, 3, 5, 7, 8, 10],
-  'Japonesa':    [0, 1, 5, 7, 8],
-  'Blues':       [0, 3, 5, 6, 7, 10],
+  'Pentatónica (China)': [0, 2, 4, 7, 9],
+  'Mayor':               [0, 2, 4, 5, 7, 9, 11],
+  'Menor':               [0, 2, 3, 5, 7, 8, 10],
+  'Japonesa':            [0, 1, 5, 7, 8],
+  'Blues':               [0, 3, 5, 6, 7, 10],
+  'Francesa (Debussy)':  [0, 2, 4, 6, 8, 10],
+  'Árabe':               [0, 1, 4, 5, 7, 8, 11],
 };
 const nombres = Object.keys(ESCALAS);
 let escalaIdx = 0, conEco = true, calma = false;
 
-// Preferencias guardadas en este dispositivo (si el navegador lo permite)
-function leer(k, def) { try { const v = localStorage.getItem('lienzo.' + k); return v === null ? def : v === '1'; } catch { return def; } }
-function guardar(k, v) { try { localStorage.setItem('lienzo.' + k, v ? '1' : '0'); } catch {} }
-let ac, master, delay, feedback, recDest;
+// Cada instrumento es una suma de ondas (parciales): m = múltiplo de la frecuencia, g = volumen
+const INSTRUMENTOS = {
+  'Clásico':  { emoji: '🎵', parciales: x => [{ tipo: x < 0.5 ? 'sine' : 'triangle', m: 1, g: 1 }], ataque: 0.01, cola: 1.2 },
+  'Piano':    { emoji: '🎹', parciales: () => [{ tipo: 'triangle', m: 1, g: 1 }, { tipo: 'sine', m: 2, g: 0.3 }, { tipo: 'sine', m: 3, g: 0.1 }], ataque: 0.005, cola: 1.6 },
+  'Campanas': { emoji: '🔔', parciales: () => [{ tipo: 'sine', m: 1, g: 1 }, { tipo: 'sine', m: 2.76, g: 0.5 }, { tipo: 'sine', m: 5.4, g: 0.25 }], ataque: 0.003, cola: 3 },
+  'Marimba':  { emoji: '🪵', parciales: () => [{ tipo: 'sine', m: 1, g: 1 }, { tipo: 'sine', m: 4, g: 0.35 }], ataque: 0.003, cola: 0.6 },
+  'Voz':      { emoji: '🎤', parciales: () => [{ tipo: 'sawtooth', m: 1, g: 1 }], ataque: 0.12, cola: 1.4, voz: true },
+};
+const instNombres = Object.keys(INSTRUMENTOS);
+let instIdx = 0;
+
+let ac, master, delay, feedback, recDest, analizador;
 
 function initAudio() {
   if (ac) return;
@@ -88,6 +123,21 @@ function initAudio() {
   delay.connect(master); master.connect(ac.destination);
   recDest = ac.createMediaStreamDestination();
   master.connect(recDest);
+  analizador = ac.createAnalyser(); analizador.fftSize = 2048;
+  master.connect(analizador);
+}
+
+// ---------- Descargas (audio y dibujo) ----------
+function nombreArchivo(ext) {
+  const f = new Date(), d = n => String(n).padStart(2, '0');
+  return `lienzo-musical-${f.getFullYear()}${d(f.getMonth() + 1)}${d(f.getDate())}-${d(f.getHours())}${d(f.getMinutes())}${d(f.getSeconds())}.${ext}`;
+}
+function bajar(blob, ext) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = nombreArchivo(ext);
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ---------- Grabación ----------
@@ -128,13 +178,7 @@ function descargar() {
   if (!trozos.length) return;
   const tipo = grabadora.mimeType || 'audio/webm';
   const ext = tipo.includes('ogg') ? 'ogg' : tipo.includes('mp4') ? 'm4a' : 'webm';
-  const blob = new Blob(trozos, { type: tipo });
-  const a = document.createElement('a');
-  const f = new Date();
-  a.href = URL.createObjectURL(blob);
-  a.download = `lienzo-musical-${f.getFullYear()}${String(f.getMonth() + 1).padStart(2, '0')}${String(f.getDate()).padStart(2, '0')}-${String(f.getHours()).padStart(2, '0')}${String(f.getMinutes()).padStart(2, '0')}${String(f.getSeconds()).padStart(2, '0')}.${ext}`;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  bajar(new Blob(trozos, { type: tipo }), ext);
 }
 
 bRec.onclick = () => {
@@ -143,12 +187,64 @@ bRec.onclick = () => {
   else empezarGrabacion();
 };
 
+// ---------- Notas ----------
+const NOMBRES_ES = ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'];
+const NOMBRES_EN = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+function nombreNota(midi) { const o = Math.floor(midi / 12) - 1, n = midi % 12; return { es: NOMBRES_ES[n] + o, en: NOMBRES_EN[n] + o }; }
+
 function notaDesdeY(y) {
   const esc = ESCALAS[nombres[escalaIdx]];
   const pasos = esc.length * 3;                 // 3 octavas
   const i = Math.floor((1 - y / H) * pasos);
   const oct = Math.floor(i / esc.length), grado = esc[((i % esc.length) + esc.length) % esc.length];
   return { midi: 48 + oct * 12 + grado, i };
+}
+
+let ultimaInfo = null;   // última nota que sonó, para el modo ciencia
+
+// Hace sonar una nota midi con el instrumento elegido
+function sonar(midi, x, fuerza) {
+  const now = ac.currentTime;
+  const f = 440 * Math.pow(2, (midi - 69) / 12);
+  const inst = INSTRUMENTOS[instNombres[instIdx]];
+  const partes = inst.parciales(x / W);
+  const total = partes.reduce((s, p) => s + p.g, 0);
+  const g = ac.createGain(), pan = ac.createStereoPanner();
+  pan.pan.value = (x / W) * 2 - 1;
+  let vol = calma ? Math.min(0.18, 0.05 + fuerza * 0.006) : Math.min(0.35, 0.08 + fuerza * 0.012);
+  if (inst.voz) vol *= 2.5;                      // los filtros de la voz le quitan volumen
+  const ataque = calma ? Math.max(0.08, inst.ataque) : inst.ataque;
+  const cola = calma ? Math.max(2.5, inst.cola * 1.5) : inst.cola;
+  const fin = now + cola + 0.1;
+  g.gain.setValueAtTime(0, now);
+  g.gain.linearRampToValueAtTime(vol, now + ataque);
+  g.gain.exponentialRampToValueAtTime(0.0001, now + cola);
+  let destino = g;
+  if (inst.voz) {
+    // Formantes de la vocal "a": filtros que dejan pasar las frecuencias de la voz humana
+    destino = ac.createGain();
+    [[800, 6, 1], [1150, 8, 0.6], [2900, 10, 0.25]].forEach(([fr, q, ga]) => {
+      const bp = ac.createBiquadFilter(), gg = ac.createGain();
+      bp.type = 'bandpass'; bp.frequency.value = fr; bp.Q.value = q; gg.gain.value = ga;
+      destino.connect(bp); bp.connect(gg); gg.connect(g);
+    });
+  }
+  const tipos = partes.map(p => calma && p.tipo === 'triangle' ? 'sine' : p.tipo);
+  partes.forEach((p, k) => {
+    const o = ac.createOscillator(), og = ac.createGain();
+    o.type = tipos[k];
+    o.frequency.value = f * p.m; og.gain.value = p.g / total;
+    if (inst.voz) {   // vibrato
+      const lfo = ac.createOscillator(), lg = ac.createGain();
+      lfo.frequency.value = 5; lg.gain.value = f * 0.012;
+      lfo.connect(lg); lg.connect(o.frequency); lfo.start(now); lfo.stop(fin);
+    }
+    o.connect(og); og.connect(destino); o.start(now); o.stop(fin);
+  });
+  g.connect(pan); pan.connect(master);
+  if (conEco) pan.connect(delay);
+  ultimaInfo = { midi, hz: f, onda: tipos[0], inst: instNombres[instIdx] };
+  return midi;
 }
 
 let ultimaNota = -1, ultimoT = 0;
@@ -159,20 +255,7 @@ function tocar(x, y, fuerza) {
   if (i === ultimaNota && now - ultimoT < (calma ? 0.3 : 0.12)) return;
   if (calma && now - ultimoT < 0.15) return;       // en calma, notas más espaciadas
   ultimaNota = i; ultimoT = now;
-  const f = 440 * Math.pow(2, (midi - 69) / 12);
-  const o = ac.createOscillator(), g = ac.createGain(), pan = ac.createStereoPanner();
-  o.type = calma || x / W < 0.5 ? 'sine' : 'triangle';
-  o.frequency.value = f;
-  pan.pan.value = (x / W) * 2 - 1;
-  const vol = calma ? Math.min(0.18, 0.05 + fuerza * 0.006) : Math.min(0.35, 0.08 + fuerza * 0.012);
-  const ataque = calma ? 0.08 : 0.01, cola = calma ? 2.5 : 1.2;
-  g.gain.setValueAtTime(0, now);
-  g.gain.linearRampToValueAtTime(vol, now + ataque);
-  g.gain.exponentialRampToValueAtTime(0.0001, now + cola);
-  o.connect(g); g.connect(pan); pan.connect(master);
-  if (conEco) pan.connect(delay);
-  o.start(now); o.stop(now + cola + 0.1);
-  return midi;
+  return sonar(midi, x, fuerza);
 }
 
 // ---------- Partículas ----------
@@ -195,6 +278,7 @@ const hint = document.getElementById('hint');
 cv.addEventListener('pointerdown', e => {
   initAudio(); ac.resume(); hint.style.opacity = 0;
   const x = e.clientX, y = e.clientY;
+  if (reto) { tocarEnReto(x, y); return; }
   trazos.set(e.pointerId, { x, y });
   const m = tocar(x, y, 10); anillo(x, y, m); emitir(x, y, 0, 0, 12, m);
 });
@@ -213,6 +297,7 @@ addEventListener('pointerup', soltar);
 addEventListener('pointercancel', soltar);
 
 function explosion() {
+  if (reto) return;
   initAudio(); ac.resume(); hint.style.opacity = 0;
   const n = calma ? 3 : 6, paso = calma ? 350 : 110;
   for (let k = 0; k < n; k++) setTimeout(() => {
@@ -234,18 +319,182 @@ bEsc.onclick = () => { escalaIdx = (escalaIdx + 1) % nombres.length; bEsc.textCo
 bEco.onclick = () => { conEco = !conEco; bEco.textContent = 'Eco: ' + (conEco ? 'sí' : 'no'); bEco.classList.toggle('on', conEco); };
 document.getElementById('limpiar').onclick = () => { parts.length = 0; ctx.fillStyle = '#0b0b14'; ctx.fillRect(0, 0, W, H); };
 
-// ---------- Modo calma ----------
-const bCalma = document.getElementById('calma');
-function ponerCalma(v) { calma = v; bCalma.classList.toggle('on', v); guardar('calma', v); }
-bCalma.onclick = () => { ponerCalma(!calma); avisar(calma ? '🌙 Modo calma' : '🎨 Modo normal'); };
-ponerCalma(leer('calma', false));
-
 // ---------- Avisos ----------
 const aviso = document.getElementById('aviso');
 let tAviso = null;
 function avisar(txt) {
   aviso.textContent = txt; aviso.classList.add('ver');
   clearTimeout(tAviso); tAviso = setTimeout(() => aviso.classList.remove('ver'), 2000);
+}
+
+// ---------- Modo calma ----------
+const bCalma = document.getElementById('calma');
+function ponerCalma(v) { calma = v; bCalma.classList.toggle('on', v); guardar('calma', v); }
+bCalma.onclick = () => { ponerCalma(!calma); avisar(calma ? '🌙 Modo calma' : '🎨 Modo normal'); };
+ponerCalma(leer('calma', false));
+
+// ---------- Instrumentos ----------
+const bInst = document.getElementById('instrumento');
+function ponerInst(i) {
+  instIdx = i; bInst.querySelector('span').textContent = INSTRUMENTOS[instNombres[i]].emoji;
+  guardarTxt('instrumento', instNombres[i]);
+}
+bInst.onclick = () => {
+  ponerInst((instIdx + 1) % instNombres.length);
+  avisar(INSTRUMENTOS[instNombres[instIdx]].emoji + ' ' + instNombres[instIdx]);
+  initAudio(); ac.resume(); sonar(64, W / 2, 10);   // una nota de muestra
+};
+ponerInst(Math.max(0, instNombres.indexOf(leerTxt('instrumento'))));
+
+// ---------- Guardar dibujo ----------
+document.getElementById('foto').onclick = () => {
+  const t = document.createElement('canvas'); t.width = cv.width; t.height = cv.height;
+  const c = t.getContext('2d');
+  c.fillStyle = '#0b0b14'; c.fillRect(0, 0, t.width, t.height);   // fondo sólido (el lienzo es transparente)
+  c.drawImage(cv, 0, 0);
+  t.toBlob(b => { if (b) { bajar(b, 'png'); avisar('📷 ¡Dibujo guardado!'); } }, 'image/png');
+};
+
+// ---------- Retos de música ----------
+const RETO_NOTAS = [60, 62, 64, 65, 67, 69, 71];   // Do a Si (C4–B4): una franja por nota
+const CANCIONES = {                                // posiciones en RETO_NOTAS
+  'Estrellita':       [0, 0, 4, 4, 5, 5, 4, 3, 3, 2, 2, 1, 1, 0],
+  'Martinillo':       [0, 1, 2, 0, 0, 1, 2, 0, 2, 3, 4, 2, 3, 4, 4, 5, 4, 3, 2, 0, 4, 5, 4, 3, 2, 0],
+  'Oda a la alegría': [2, 2, 3, 4, 4, 3, 2, 1, 0, 0, 1, 2, 2, 1, 1],
+};
+const bandas = document.getElementById('bandas'), panelReto = document.getElementById('reto');
+const retoInfo = document.getElementById('retoInfo'), retoBotones = document.getElementById('retoBotones');
+RETO_NOTAS.forEach(m => {
+  const d = document.createElement('div'), h = (m * 29) % 360;
+  d.textContent = `${NOMBRES_ES[m % 12]} · ${NOMBRES_EN[m % 12]}`;
+  d.style.background = `hsl(${h} 70% 55% / .16)`; d.style.borderColor = `hsl(${h} 80% 65% / .5)`;
+  bandas.appendChild(d);
+});
+
+let reto = null, retoId = 0, record = Number(leerTxt('record')) || 0;
+const aleatoria = () => Math.floor(Math.random() * RETO_NOTAS.length);
+function bandaDesdeY(y) { return Math.max(0, Math.min(6, Math.floor((1 - y / H) * 7))); }
+function brillar(b) { const el = bandas.children[b]; el.classList.add('brilla'); setTimeout(() => el.classList.remove('brilla'), 350); }
+function tocarBanda(b, x = W / 2) {
+  const m = RETO_NOTAS[b], y = H - (b + 0.5) * H / 7;
+  sonar(m, x, 12); brillar(b); anillo(x, y, m); emitir(x, y, 0, 0, 8, m);
+}
+function mostrarReto() {
+  if (!reto) return;
+  retoInfo.textContent = reto.tipo === 'simon'
+    ? `🎯 Simón musical · Nivel ${reto.nivel} · Récord ${record}`
+    : `🎵 ${reto.nombre} · ${reto.pos} de ${reto.notas.length}`;
+  [...bandas.children].forEach((el, k) => el.classList.toggle('siguiente', reto.tipo === 'cancion' && k === reto.notas[reto.pos]));
+}
+function celebrar() {
+  for (let k = 0; k < 6; k++) { const m = RETO_NOTAS[aleatoria()], x = Math.random() * W, y = Math.random() * H; anillo(x, y, m); emitir(x, y, 0, 0, 20, m); }
+}
+
+// Simón musical: escucha la secuencia y repítela; cada acierto agrega una nota
+function empezarSimon() {
+  const id = ++retoId;
+  reto = { tipo: 'simon', nivel: 1, sec: [aleatoria()], pos: 0, turno: 'escuchar' };
+  mostrarReto(); reproducirSimon(id);
+}
+function reproducirSimon(id) {
+  reto.turno = 'escuchar';
+  const paso = calma ? 900 : 650;
+  reto.sec.forEach((b, k) => setTimeout(() => { if (id === retoId) tocarBanda(b); }, 700 + k * paso));
+  setTimeout(() => { if (id !== retoId) return; reto.turno = 'tocar'; reto.pos = 0; avisar('¡Tu turno! 👆'); }, 700 + reto.sec.length * paso);
+}
+function empezarCancion(nombre) {
+  ++retoId;
+  reto = { tipo: 'cancion', nombre, notas: CANCIONES[nombre], pos: 0 };
+  mostrarReto(); avisar('Toca la franja que brilla ✨');
+}
+function tocarEnReto(x, y) {
+  const b = bandaDesdeY(y), id = retoId;
+  if (reto.tipo === 'simon') {
+    if (reto.turno !== 'tocar') return;
+    tocarBanda(b, x);
+    if (b !== reto.sec[reto.pos]) {             // sin castigo: se repite la misma secuencia
+      reto.turno = 'escuchar'; avisar('¡Casi! Escucha otra vez 🎧');
+      setTimeout(() => id === retoId && reproducirSimon(id), 1300);
+      return;
+    }
+    if (++reto.pos < reto.sec.length) return;
+    reto.turno = 'escuchar';
+    if (reto.nivel > record) { record = reto.nivel; guardarTxt('record', record); }
+    reto.nivel++; reto.sec.push(aleatoria());
+    avisar(`¡Muy bien! 🌟 Nivel ${reto.nivel}`); celebrar(); mostrarReto();
+    setTimeout(() => id === retoId && reproducirSimon(id), 1300);
+  } else {
+    tocarBanda(b, x);                            // cualquier franja suena; solo la correcta avanza
+    if (b !== reto.notas[reto.pos]) return;
+    if (++reto.pos === reto.notas.length) { avisar(`🎉 ¡Tocaste ${reto.nombre}!`); celebrar(); reto.pos = 0; }
+    mostrarReto();
+  }
+}
+function salirReto() {
+  ++retoId; reto = null;
+  document.body.classList.remove('en-reto');
+  [...bandas.children].forEach(el => el.classList.remove('siguiente'));
+}
+function botonReto(txt, fn) { const b = document.createElement('button'); b.textContent = txt; b.onclick = fn; retoBotones.appendChild(b); }
+botonReto('🎯 Simón', empezarSimon);
+Object.keys(CANCIONES).forEach(n => botonReto('🎵 ' + n, () => empezarCancion(n)));
+botonReto('✖ Salir', salirReto);
+document.getElementById('retos').onclick = () => {
+  initAudio(); ac.resume(); hint.style.opacity = 0; trazos.clear();
+  document.body.classList.add('en-reto'); empezarSimon();
+};
+
+// ---------- Ciencia del sonido ----------
+const ONDAS = { sine: 'senoidal', triangle: 'triangular', sawtooth: 'diente de sierra', square: 'cuadrada' };
+const DATOS = [
+  'La nota La (A4) vibra 440 veces por segundo: 440 Hz.',
+  'Subir una octava es duplicar la frecuencia: La4 = 440 Hz y La5 = 880 Hz.',
+  'En el aire, el sonido viaja a unos 343 metros por segundo.',
+  'En el agua, el sonido viaja unas 4 veces más rápido que en el aire.',
+  'En el espacio no hay sonido: no hay aire que vibre.',
+  'La onda senoidal es el sonido más puro: una sola frecuencia.',
+  'Las campanas suenan especiales porque sus armónicos no son múltiplos exactos de la nota.',
+  'Murciélagos y delfines "ven" con el eco: se llama ecolocalización.',
+  'Los humanos oímos de unos 20 Hz a 20 000 Hz; los perros oyen sonidos más agudos.',
+  'La escala pentatónica se usa mucho en la música tradicional china.',
+  'Debussy, compositor francés, usó la escala de tonos enteros.',
+];
+const bCiencia = document.getElementById('ciencia'), hud = document.getElementById('hud');
+let ciencia = false;
+function ponerCiencia(v) { ciencia = v; bCiencia.classList.toggle('on', v); guardar('ciencia', v); }
+bCiencia.onclick = () => { ponerCiencia(!ciencia); avisar(ciencia ? '🔬 Ciencia del sonido' : '🔬 Ciencia apagada'); };
+ponerCiencia(leer('ciencia', false));
+
+// Escribe texto reduciendo la letra si no cabe en el ancho
+function texto(t, x, y, maxw, tam, peso, col) {
+  ctx.fillStyle = col;
+  do { ctx.font = `${peso} ${tam}px system-ui, sans-serif`; } while (ctx.measureText(t).width > maxw && --tam > 9);
+  ctx.fillText(t, x, y);
+}
+function dibujarCiencia() {
+  const top = (reto ? panelReto : hud).getBoundingClientRect().bottom + 8;
+  const w = Math.min(W - 32, 560), x0 = (W - w) / 2, h = 122;
+  ctx.fillStyle = '#0b0b14'; ctx.fillRect(x0, top, w, h);
+  ctx.strokeStyle = '#ffffff33'; ctx.lineWidth = 1; ctx.strokeRect(x0 + .5, top + .5, w - 1, h - 1);
+  if (analizador) {
+    const datos = new Uint8Array(analizador.fftSize);
+    analizador.getByteTimeDomainData(datos);
+    // Empieza donde la onda cruza el centro subiendo, para que se vea quieta
+    let ini = 0;
+    for (let k = 1; k < datos.length / 2; k++) if (datos[k - 1] < 128 && datos[k] >= 128) { ini = k; break; }
+    const n = 600;
+    ctx.beginPath();
+    for (let k = 0; k < n; k++) {
+      const xx = x0 + 10 + (k / (n - 1)) * (w - 20), yy = top + 42 - ((datos[ini + k] - 128) / 128) * 32;
+      k ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy);
+    }
+    ctx.strokeStyle = ultimaInfo ? color(ultimaInfo.midi) : '#8a8aa0'; ctx.lineWidth = 2; ctx.stroke();
+  }
+  const linea = ultimaInfo
+    ? (n => `${n.es} (${n.en}) · ${Math.round(ultimaInfo.hz)} Hz · ${ultimaInfo.inst} · onda ${ONDAS[ultimaInfo.onda]}`)(nombreNota(ultimaInfo.midi))
+    : 'Toca el lienzo para ver la onda del sonido';
+  texto(linea, x0 + 10, top + 94, w - 20, 15, 600, '#e8e8f0');
+  texto('💡 ' + DATOS[Math.floor(Date.now() / 8000) % DATOS.length], x0 + 10, top + 113, w - 20, 13, 400, '#8a8aa0');
 }
 
 // ---------- Bloqueo (mantener 🔒 presionado 3 s para desbloquear) ----------
@@ -258,7 +507,7 @@ function ponerBloqueo(v) {
 bCand.addEventListener('pointerdown', () => {
   if (!bloqueado) { ponerBloqueo(true); avisar('🔒 Bloqueado'); return; }
   bCand.classList.add('cargando');
-  tCand = setTimeout(() => { tCand = null; bCand.classList.remove('cargando'); ponerBloqueo(false); avisar('🔓 Opciones para adultos'); }, 3000);
+  tCand = setTimeout(() => { tCand = null; bCand.classList.remove('cargando'); ponerBloqueo(false); avisar('🔓 Más opciones'); }, 3000);
 });
 const soltarCandado = () => {
   if (!tCand) return;
@@ -280,6 +529,8 @@ bPant.onclick = () => {
 
 // ---------- Bucle ----------
 function frame() {
+  // Por si la ventana cambió de tamaño sin avisar (p. ej. se abrió en segundo plano con tamaño 0)
+  if (W !== innerWidth || H !== innerHeight) resize();
   // Un desvanecido más lento deja manchas grises que nunca se borran; 0.1 es el mínimo limpio
   ctx.fillStyle = calma ? 'rgba(11,11,20,0.1)' : 'rgba(11,11,20,0.12)';
   ctx.fillRect(0, 0, W, H);
@@ -299,6 +550,8 @@ function frame() {
     if (p.vida <= 0) parts.splice(i, 1);
   }
   ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  if (reto) panelReto.style.top = hud.getBoundingClientRect().bottom + 8 + 'px';
+  if (ciencia) dibujarCiencia();
   requestAnimationFrame(frame);
 }
 frame();
