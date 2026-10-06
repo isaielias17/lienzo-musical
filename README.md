@@ -20,6 +20,7 @@ Abre `index.html` en un navegador moderno. No necesita instalación ni servidor.
 | 🌙 Calma | Modo tranquilo: notas suaves que se apagan despacio, colores pastel, menos partículas y movimiento más lento. |
 | ✨ Explosión | Lanza una ráfaga de notas (igual que la barra espaciadora). |
 | 🎵 Sonido | Cambia de instrumento: Clásico 🎵, Piano 🎹, Campanas 🔔, Marimba 🪵 y Voz 🎤. |
+| 🎶 Canción | Modo canción para los más pequeños: cada toque o trazo, en cualquier parte, toca la siguiente nota de *Estrellita*, *Martinillo* u *Oda a la alegría*. No hay forma de equivocarse; al terminar hay fiesta y vuelve a empezar. Tócalo otra vez para cambiar de canción, y una vez más para volver a pintar libre. |
 | 🧽 Limpiar | Borra el lienzo. |
 | ⛶ Pantalla | Pantalla completa, sin distracciones (si el navegador lo permite). |
 
