@@ -69,11 +69,12 @@
   <button id="calma"><span>🌙</span>Calma</button>
   <button id="explosion"><span>✨</span>Explosión</button>
   <button id="instrumento"><span>🎵</span>Sonido</button>
+  <button id="cancion"><span>🎶</span>Canción</button>
   <button id="limpiar"><span>🧽</span>Limpiar</button>
   <button id="pantalla"><span>⛶</span>Pantalla</button>
 </div>
 <div id="aviso"></div>
-<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>✨ explosión · 🎵 instrumentos · 🌙 calma</div></div>
+<div id="hint"><div><b>Arrastra para pintar sonido</b>Arriba = agudo · Abajo = grave · Rápido = fuerte<br>✨ explosión · 🎵 instrumentos · 🎶 canción · 🌙 calma</div></div>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
@@ -247,11 +248,17 @@ function sonar(midi, x, fuerza) {
   return midi;
 }
 
-let ultimaNota = -1, ultimoT = 0;
+let ultimaNota = -1, ultimoT = -Infinity;   // -Infinity: el primer toque siempre suena (el reloj de audio empieza en 0)
+let cancionNino = null;   // modo canción: { nombre, pos } o null para pintar libre
 function tocar(x, y, fuerza) {
   if (!ac) return;
-  const { midi, i } = notaDesdeY(y);
   const now = ac.currentTime;
+  if (cancionNino) {      // cada toque o trazo toca la siguiente nota de la canción
+    if (now - ultimoT < (calma ? 0.35 : 0.18)) return;
+    ultimoT = now;
+    return sonar(siguienteNotaCancion(), x, fuerza);
+  }
+  const { midi, i } = notaDesdeY(y);
   if (i === ultimaNota && now - ultimoT < (calma ? 0.3 : 0.12)) return;
   if (calma && now - ultimoT < 0.15) return;       // en calma, notas más espaciadas
   ultimaNota = i; ultimoT = now;
@@ -302,7 +309,7 @@ function explosion() {
   const n = calma ? 3 : 6, paso = calma ? 350 : 110;
   for (let k = 0; k < n; k++) setTimeout(() => {
     const x = Math.random() * W, y = Math.random() * H;
-    ultimaNota = -1; ultimoT = 0;
+    ultimaNota = -1; ultimoT = -Infinity;
     const m = tocar(x, y, 15); anillo(x, y, m); emitir(x, y, 0, 0, 25, m);
   }, k * paso);
 }
@@ -389,6 +396,24 @@ function mostrarReto() {
 function celebrar() {
   for (let k = 0; k < 6; k++) { const m = RETO_NOTAS[aleatoria()], x = Math.random() * W, y = Math.random() * H; anillo(x, y, m); emitir(x, y, 0, 0, 20, m); }
 }
+
+// Modo canción (para los más pequeños): no hay forma de equivocarse, cualquier toque avanza
+const bCancion = document.getElementById('cancion'), LISTA_CANCIONES = Object.keys(CANCIONES);
+function siguienteNotaCancion() {
+  const notas = CANCIONES[cancionNino.nombre], m = RETO_NOTAS[notas[cancionNino.pos]];
+  if (++cancionNino.pos === notas.length) {   // al terminar: fiesta y vuelve a empezar
+    const nombre = cancionNino.nombre;
+    cancionNino.pos = 0;
+    setTimeout(() => { celebrar(); avisar(`🎉 ¡${nombre}!`); }, 300);
+  }
+  return m;
+}
+bCancion.onclick = () => {
+  const i = cancionNino ? LISTA_CANCIONES.indexOf(cancionNino.nombre) + 1 : 0;
+  cancionNino = i < LISTA_CANCIONES.length ? { nombre: LISTA_CANCIONES[i], pos: 0 } : null;
+  bCancion.classList.toggle('on', !!cancionNino);
+  avisar(cancionNino ? '🎶 ' + cancionNino.nombre : '🎨 Pintar libre');
+};
 
 // Simón musical: escucha la secuencia y repítela; cada acierto agrega una nota
 function empezarSimon() {
